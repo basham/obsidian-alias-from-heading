@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-alias-from-heading",
 	"version": "1.0.1",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Obsidian plugin: Automatically generate an alias from the first heading in a file. Links with this alias are updated when the heading changes.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
