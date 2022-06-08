@@ -9,6 +9,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
 		const { metadataCache, vault } = this.app;
 		const cache = new Map();
+
 		this.registerEvent(metadataCache.on('resolve', async (file) => {
 			const { path } = file;
 			const heading = this.updateAlias(path);
@@ -26,20 +27,20 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					return hasRef ? [...paths, toPath] : paths;
 				}, [])
 				.map((p:string) => {
-					const file = <TFile>vault.getAbstractFileByPath(p);
+					const f = <TFile>vault.getAbstractFileByPath(p);
 					const { links = [] } = metadataCache.getCache(p);
 					const rc = links
-						.filter((rc) => `${rc.link}.md` === path)
+						.filter((rc) => rc.link === metadataCache.fileToLinktext(file, ''))
 						.filter((rc) => rc.displayText === prevHeading || rc.displayText === rc.link)[0]
-					return [file, rc];
+					return [f, rc];
 				})
 				.filter(([, rc]:[TFile, ReferenceCache]) => rc)
-				.map(async ([file, rc]:[TFile, ReferenceCache]) => {
-					const prevContents = await vault.read(file);
+				.map(async ([f, rc]:[TFile, ReferenceCache]) => {
+					const prevContents = await vault.read(f);
 					const nextLink = `[[${rc.link}|${heading === undefined ? rc.link : heading}]]`;
 					const contents = replaceAll(prevContents, rc.original, nextLink);
-					await vault.modify(file, contents);
-					return file.path;
+					await vault.modify(f, contents);
+					return f.path;
 				})
 
 			if (!modifiedFiles.length) {
