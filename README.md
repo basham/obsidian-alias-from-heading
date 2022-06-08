@@ -84,7 +84,19 @@ Now that the display name matches the first heading of the document it links to,
 - ...
 ```
 
-But if want a custom display name for the link in the second document that is not kept in sync, that's okay, too. Just manually change it inline.
+If all headings are removed from the first document, any links that were kept in sync are updated so that their display name matches the file name. This behavior makes it easy to later insert a new heading while keeping any link display names in sync. It also makes the preview of the link still meaningful, in the meantime.
+
+```md
+<!-- 2022-02-02-1445.md -->
+
+# 🥬 Gardening projects
+
+- [[2022-06-08-1030|2022-06-08-1030]]
+- Germinate seeds
+- ...
+```
+
+If a custom display name is wanted or none at all, just manually change it inline. It will not be kept in sync with the heading, unless it is manually changed back to match the heading.
 
 ```md
 <!-- 2022-02-02-1445.md -->
