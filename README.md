@@ -48,7 +48,7 @@ With this plugin, the alias front matter is no longer needed.
 - Fill the bed
 ```
 
-This second document links to the first document with the file name.
+This second document links to the first document with only the file name.
 
 ```md
 <!-- 2022-02-02-1445.md -->
