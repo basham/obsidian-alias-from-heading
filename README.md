@@ -72,7 +72,7 @@ However, it is often more readable to link to the document with a friendly displ
 - ...
 ```
 
-Now that the display name matches the first heading of the document it links to, they stay in sync. Update the heading in the first document from `🍅 Build a garden` to `🥕 Build a raised garden bed`. Obsidian notifies you with "Updated links in 1 file." Now the second document displays:
+Now that the display name matches the first heading of the document it links to, they stay in sync. Update the heading in the first document from `🍅 Build a garden` to `🥕 Build a raised garden bed`. Obsidian notifies with "Updated links in 1 file." Now the second document displays the change.
 
 ```md
 <!-- 2022-02-02-1445.md -->
