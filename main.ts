@@ -1,4 +1,9 @@
-import { Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { MetadataCache, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+
+interface MetadataCacheExtra extends MetadataCache {
+	fileCache: any;
+	metadataCache: any;
+}
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
@@ -57,7 +62,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		// This gets the first heading.
 		// However, it could be configured to get the first heading with `{ level: 1 }`?
 		const { heading } = headings[0];
-		const { hash } = metadataCache.fileCache[path];
+		const { hash } = (<MetadataCacheExtra>metadataCache).fileCache[path];
 		const { alias } = <any>frontmatter;
 		const _alias = alias ? Array.isArray(alias) ? alias : [alias] : []
 		const uniqueAlias = [...new Set([ heading, ..._alias ])];
@@ -68,7 +73,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				alias: uniqueAlias
 			}
 		};
-		metadataCache.metadataCache[hash] = updatedCache;
+		(<MetadataCacheExtra>metadataCache).metadataCache[hash] = updatedCache;
 		return heading;
 	}
 }
