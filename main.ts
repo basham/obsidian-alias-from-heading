@@ -82,7 +82,7 @@ function escapeRegExp(source:string):string {
 	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function pluralize (count:number, singular:string, plural:string = `${singular}s`):string {
+function pluralize (count:number, singular:string, plural = `${singular}s`):string {
 	return count === 1 ? singular : plural;
 }
 
