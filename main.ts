@@ -8,18 +8,33 @@ interface MetadataCacheExtra extends MetadataCache {
 export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
 		const { metadataCache, vault } = this.app;
-		const cache = new Map();
+		const headingByPath = new Map();
 
-		this.registerEvent(metadataCache.on('resolve', async (file) => {
+		vault.getMarkdownFiles().forEach((file) => {
 			const { path } = file;
-			const heading = this.updateAlias(path);
-			const prevHeading = cache.get(path);
+			const heading = this.updateCache(path);
+			headingByPath.set(path, heading);
+		});
+
+		vault.on('rename', (file, oldPath) => {
+			if (!headingByPath.has(oldPath)) {
+				return;
+			}
+			const heading = headingByPath.get(oldPath);
+			headingByPath.set(file.path, heading);
+			headingByPath.delete(oldPath);
+		});
+
+		this.registerEvent(metadataCache.on('changed', async (file) => {
+			const { path } = file;
+			const heading = this.updateCache(path);
+			const prevHeading = headingByPath.get(path);
 
 			if (prevHeading === heading) {
 				return;
 			}
 
-			cache.set(path, heading);
+			headingByPath.set(path, heading);
 
 			const modifiedFiles = Object.entries(metadataCache.resolvedLinks)
 				.reduce((paths, [toPath, links]) => {
@@ -53,7 +68,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		}));
 	}
 
-	updateAlias (path: string) {
+	updateCache (path: string) {
 		const { metadataCache } = this.app;
 		const cache = metadataCache.getCache(path);
 		const { frontmatter = {}, headings } = cache;
