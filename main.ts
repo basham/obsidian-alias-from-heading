@@ -7,23 +7,31 @@ interface MetadataCacheExtra extends MetadataCache {
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
+		const plugin = this;
 		const { metadataCache, vault } = this.app;
 		const headingByPath = new Map();
 
-		vault.getMarkdownFiles().forEach((file) => {
+		function updateHeadingByFile (file:TFile) {
+			if (!file) {
+				return;
+			}
 			const { path } = file;
-			const heading = this.updateCache(path);
+			const heading = plugin.updateCache(path);
 			headingByPath.set(path, heading);
-		});
+		}
 
-		vault.on('rename', (file, oldPath) => {
+		updateHeadingByFile(this.app.workspace.getActiveFile());
+
+		this.registerEvent(this.app.workspace.on('file-open', updateHeadingByFile));
+
+		this.registerEvent(vault.on('rename', (file, oldPath) => {
 			if (!headingByPath.has(oldPath)) {
 				return;
 			}
 			const heading = headingByPath.get(oldPath);
 			headingByPath.set(file.path, heading);
 			headingByPath.delete(oldPath);
-		});
+		}));
 
 		this.registerEvent(metadataCache.on('changed', async (file) => {
 			const { path } = file;
