@@ -9,40 +9,28 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
 		const plugin = this;
 		const { metadataCache, vault, workspace } = this.app;
-		const headingByPath = new Map();
+		let heading:string;
 
-		function updateHeadingByFile (file:TFile) {
+		function loadFile (file:TFile) {
 			if (!file) {
 				return;
 			}
 			const { path } = file;
-			const heading = plugin.updateCache(path);
-			headingByPath.set(path, heading);
+			heading = plugin.loadHeading(path);
 		}
 
-		updateHeadingByFile(workspace.getActiveFile());
+		loadFile(workspace.getActiveFile());
 
-		this.registerEvent(workspace.on('file-open', updateHeadingByFile));
-
-		this.registerEvent(vault.on('rename', (file, oldPath) => {
-			if (!headingByPath.has(oldPath)) {
-				return;
-			}
-			const heading = headingByPath.get(oldPath);
-			headingByPath.set(file.path, heading);
-			headingByPath.delete(oldPath);
-		}));
+		this.registerEvent(workspace.on('file-open', loadFile));
 
 		this.registerEvent(metadataCache.on('changed', async (file) => {
 			const { path } = file;
-			const heading = this.updateCache(path);
-			const prevHeading = headingByPath.get(path);
+			const prevHeading = heading;
+			heading = this.loadHeading(path);
 
 			if (prevHeading === heading) {
 				return;
 			}
-
-			headingByPath.set(path, heading);
 
 			const modifiedFiles = Object.entries(metadataCache.resolvedLinks)
 				.reduce((paths, [toPath, links]) => {
@@ -86,7 +74,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		}));
 	}
 
-	updateCache (path: string) {
+	loadHeading (path: string) {
 		const { metadataCache } = this.app;
 		const cache = metadataCache.getCache(path);
 		const { frontmatter = {}, headings } = cache;
