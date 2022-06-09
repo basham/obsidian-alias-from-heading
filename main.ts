@@ -1,4 +1,4 @@
-import { debounce, MetadataCache, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { debounce, MetadataCache, Notice, Plugin, ReferenceCache, TFile, TFolder } from 'obsidian';
 
 interface MetadataCacheExtra extends MetadataCache {
 	fileCache: any;
@@ -19,8 +19,8 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			headingByPath.set(path, heading);
 		}, 10000, true);
 
-		const loadFile = (file:TFile) => {
-			if (!file) {
+		const loadFile = (file:TFile|TFolder) => {
+			if (!(file instanceof TFile)) {
 				return;
 			}
 			// Cache the current heading for each active or opened file.
@@ -35,8 +35,8 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		};
 
 		loadFile(workspace.getActiveFile());
-
 		this.registerEvent(workspace.on('file-open', loadFile));
+		this.registerEvent(vault.on('rename', loadFile));
 
 		this.registerEvent(metadataCache.on('changed', async (file) => {
 			const { path } = file;
