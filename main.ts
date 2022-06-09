@@ -52,7 +52,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.map((p:string) => {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
-						.filter((rc:ReferenceCache) => rc.link === metadataCache.fileToLinktext(file, ''))
+						.filter((rc:ReferenceCache) => rc.link.split('#')[0] === metadataCache.fileToLinktext(file, ''))
 						.filter((rc:ReferenceCache) => rc.displayText === prevHeading || rc.displayText === rc.link)
 						.filter((rc:ReferenceCache) => rc.original !== `[[${rc.link}]]`)
 						.map((rc:ReferenceCache) => [
