@@ -1,4 +1,4 @@
-import { MetadataCache, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { debounce, MetadataCache, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
 
 interface MetadataCacheExtra extends MetadataCache {
 	fileCache: any;
@@ -9,14 +9,30 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
 		const plugin = this;
 		const { metadataCache, vault, workspace } = this.app;
-		let heading:string;
+		const headingByPath = new Map();
+
+		const clearHeadings = debounce((path) => {
+			if (!headingByPath.has(path)) {
+				return;
+			}
+			const heading = headingByPath.get(path);
+			headingByPath.clear();
+			headingByPath.set(path, heading);
+		}, 10000, true);
 
 		function loadFile (file:TFile) {
 			if (!file) {
 				return;
 			}
+			// Cache the current heading for each active or opened file.
+			// Once a new file opens, clear out the old data after
+			// a debounced 10 seconds. This gives plenty of time for
+			// any links to be updated, if the user updates the heading
+			// and quickly opens another file.
 			const { path } = file;
-			heading = plugin.loadHeading(path);
+			const heading = plugin.loadHeading(path);
+			headingByPath.set(path, heading);
+			clearHeadings(path);
 		}
 
 		loadFile(workspace.getActiveFile());
@@ -25,8 +41,14 @@ export default class AliasFromHeadingPlugin extends Plugin {
 
 		this.registerEvent(metadataCache.on('changed', async (file) => {
 			const { path } = file;
-			const prevHeading = heading;
-			heading = this.loadHeading(path);
+
+			if (!headingByPath.has(path)) {
+				return;
+			}
+
+			const prevHeading = headingByPath.get(path);
+			const heading = this.loadHeading(path);
+			headingByPath.set(path, heading);
 
 			if (prevHeading === heading) {
 				return;
