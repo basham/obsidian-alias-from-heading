@@ -7,7 +7,6 @@ interface MetadataCacheExtra extends MetadataCache {
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	async onload () {
-		const plugin = this;
 		const { metadataCache, vault, workspace } = this.app;
 		const headingByPath = new Map();
 
@@ -20,7 +19,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			headingByPath.set(path, heading);
 		}, 10000, true);
 
-		function loadFile (file:TFile) {
+		const loadFile = (file:TFile) => {
 			if (!file) {
 				return;
 			}
@@ -30,10 +29,10 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			// any links to be updated, if the user updates the heading
 			// and quickly opens another file.
 			const { path } = file;
-			const heading = plugin.loadHeading(path);
+			const heading = this.loadHeading(path);
 			headingByPath.set(path, heading);
 			clearHeadings(path);
-		}
+		};
 
 		loadFile(workspace.getActiveFile());
 
