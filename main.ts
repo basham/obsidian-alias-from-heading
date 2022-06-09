@@ -50,29 +50,39 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					return hasRef ? [...paths, toPath] : paths;
 				}, [])
 				.map((p:string) => {
-					const f = <TFile>vault.getAbstractFileByPath(p);
 					const { links = [] } = metadataCache.getCache(p);
-					const rc = links
-						.filter((rc) => rc.link === metadataCache.fileToLinktext(file, ''))
-						.filter((rc) => rc.displayText === prevHeading || rc.displayText === rc.link)[0]
-					return [f, rc];
+					const linksToReplace = links
+						.filter((rc:ReferenceCache) => rc.link === metadataCache.fileToLinktext(file, ''))
+						.filter((rc:ReferenceCache) => rc.displayText === prevHeading || rc.displayText === rc.link)
+						.filter((rc:ReferenceCache) => rc.original !== `[[${rc.link}]]`)
+						.map((rc:ReferenceCache) => [
+							rc.original,
+							`[[${rc.link}|${heading === undefined ? rc.link : heading}]]`
+						])
+					return [p, linksToReplace];
 				})
-				.filter(([, rc]:[TFile, ReferenceCache]) => rc)
-				.map(async ([f, rc]:[TFile, ReferenceCache]) => {
+				.filter(([, linksToReplace]:[string, []]) => linksToReplace.length)
+				.map(async ([p, linksToReplace]:[string, []]) => {
+					const f = <TFile>vault.getAbstractFileByPath(p);
 					const prevContents = await vault.read(f);
-					const nextLink = `[[${rc.link}|${heading === undefined ? rc.link : heading}]]`;
-					const contents = replaceAll(prevContents, rc.original, nextLink);
+					const contents = linksToReplace.reduce(
+						(source, [find, replace]:string[]) => replaceAll(source, find, replace),
+						prevContents
+					);
 					await vault.modify(f, contents);
-					return f.path;
+					return linksToReplace.length;
 				})
 
-			if (!modifiedFiles.length) {
+			const fileCount = modifiedFiles.length;
+
+			if (!fileCount) {
 				return;
 			}
 
-			await Promise.all(modifiedFiles);
-			const fileCount = modifiedFiles.length;
-			new Notice(`Updated links in ${fileCount} ${pluralize(fileCount, 'file')}.`);
+			const linkCount = (await Promise.all(modifiedFiles))
+				.reduce((sum, value) => sum + value, 0)
+
+			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
 	}
 
@@ -83,8 +93,6 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		if (!Array.isArray(headings) || !headings.length) {
 			return;
 		}
-		// This gets the first heading.
-		// However, it could be configured to get the first heading with `{ level: 1 }`?
 		const { heading } = headings[0];
 		const { hash } = (<MetadataCacheExtra>metadataCache).fileCache[path];
 		const { alias } = <any>frontmatter;
