@@ -34,7 +34,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			clearHeadings(path);
 		};
 
-		loadFile(workspace.getActiveFile());
+		workspace.onLayoutReady(() => loadFile(workspace.getActiveFile()));
 
 		this.registerEvent(workspace.on('file-open', loadFile));
 
@@ -84,7 +84,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					const f = <TFile>vault.getAbstractFileByPath(p);
 					const prevContents = await vault.read(f);
 					const contents = linksToReplace.reduce(
-						(source, [find, replace]:string[]) => replaceAll(source, find, replace),
+						(source, [find, replace]:string[]) => source.replaceAll(find, replace),
 						prevContents
 					);
 					await vault.modify(f, contents);
@@ -128,14 +128,6 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	}
 }
 
-function escapeRegExp(source:string):string {
-	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function pluralize (count:number, singular:string, plural = `${singular}s`):string {
 	return count === 1 ? singular : plural;
-}
-
-function replaceAll (source:string, find:string, replace:string):string {
-	return source.replace(new RegExp(escapeRegExp(find), 'g'), replace);
 }
