@@ -70,35 +70,57 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.map((p:string) => {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
-						.filter((rc:ReferenceCache) => rc.link.split('#')[0] === metadataCache.fileToLinktext(file, ''))
-						.filter((rc:ReferenceCache) => rc.displayText === prevHeading || rc.displayText === rc.link)
-						.filter((rc:ReferenceCache) => rc.original !== `[[${rc.link}]]`)
-						.map((rc:ReferenceCache) => [
-							rc.original,
-							`[[${rc.link}|${heading === undefined ? rc.link : heading}]]`
-						])
+						.map((rc:ReferenceCache) => rc.link)
+						.filter((link) => link.split('#')[0] === metadataCache.fileToLinktext(file, ''))
+						// Make pairs of links to be found and replaced.
+						// Some of these pairs may be redundant or result in no matches
+						// for any given path, but that's okay.
+						// The `rc.original` and `rc.displayText` values are not used,
+						// because it could be inaccurate if the heading ends with a `]`.
+						// The Obsidian algorithm for detecting links is correct,
+						// but this extra work is needed to match to the user intent.
+						.map((link) =>
+							[prevHeading, heading]
+								.map((h) => `[[${link}|${h === undefined ? link : h}]]`)
+						)
 					return [p, linksToReplace];
 				})
 				.filter(([, linksToReplace]:[string, []]) => linksToReplace.length)
 				.map(async ([p, linksToReplace]:[string, []]) => {
 					const f = <TFile>vault.getAbstractFileByPath(p);
 					const prevContents = await vault.read(f);
-					const contents = linksToReplace.reduce(
-						(source, [find, replace]:string[]) => source.replaceAll(find, replace),
-						prevContents
+					const [contents, matches]:(string | number)[] = linksToReplace.reduce(
+						([source, total]:[string, number], [find, replace]:string[]) => {
+							// The heading must be a regular expression and not a string.
+							// This solves two problems with the use of `String.replace()`.
+							// 1. This allows replacement patterns (`$$, `$&`, etc.)
+							//    to be included in the heading without causing mismatches,
+							//    similar to the aforementioned `]` problem.
+							// 2. This allows the second parameter to be a function,
+							//    so the number of matches can be counted as a side effect.
+							let count = 0;
+							const re = new RegExp(escapeRegExp(find), 'g');
+							const s = source.replace(re, () => {
+								count++;
+								return replace;
+							});
+							return [s, count + total];
+						},
+						[prevContents, 0]
 					);
-					await vault.modify(f, contents);
-					return linksToReplace.length;
+					await vault.modify(f, <string>contents);
+					return matches;
 				})
 
-			const fileCount = modifiedFiles.length;
+			const linkMatches = (await Promise.all(modifiedFiles))
+				.filter((m) => m);
+			const fileCount = linkMatches.length;
+			const linkCount = linkMatches
+				.reduce((sum, value) => sum + value, 0);
 
-			if (!fileCount) {
+			if (!fileCount || !linkCount) {
 				return;
 			}
-
-			const linkCount = (await Promise.all(modifiedFiles))
-				.reduce((sum, value) => sum + value, 0)
 
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
@@ -126,6 +148,10 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		(<MetadataCacheExtra>metadataCache).metadataCache[hash] = updatedCache;
 		return heading;
 	}
+}
+
+function escapeRegExp(source:string):string {
+	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function pluralize (count:number, singular:string, plural = `${singular}s`):string {
