@@ -124,6 +124,16 @@ export default class AliasFromHeadingPlugin extends Plugin {
 
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
+
+		this.registerEvent(metadataCache.on('resolve', async (file) => {
+			const { path } = file;
+			// Update metadata for all files in the vault on load.
+			// Keep it updated even if files are modified outside of Obsidian.
+			// This is also triggered after files are changed.
+			// There is a small performance penalty in that case,
+			// because the same work was already done during the `change` event.
+			this.loadHeading(path);
+		}));
 	}
 
 	loadHeading (path: string) {
