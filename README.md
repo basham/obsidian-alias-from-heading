@@ -9,7 +9,7 @@ This plugin resolves these problems in the following ways:
 
 - An alias is implicitly added to a document, matching the first heading in that document, regardless of heading level.
 - This alias is a suggestion when [typing `[[` to add a link](https://help.obsidian.md/How+to/Internal+link) or when opening a document with the [Quick Switcher](https://help.obsidian.md/Plugins/Quick+switcher).
-- This alias is not explicitly defined in YAML. Any aliases defined in YAML continue to behave in their standard way.
+- This alias is not explicitly defined in YAML. Any aliases defined in YAML continue to behave in their standard way and do not affect the behavior of this plugin.
 - Updating the first heading in a document will only update links to that document with a display name matching the heading. This makes it so the link display name can be customized for a particular context, but by default, the link display name will stay in sync with the heading.
 
 ## Example
