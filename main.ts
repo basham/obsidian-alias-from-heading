@@ -1,11 +1,17 @@
-import { debounce, MetadataCache, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { CachedMetadata, debounce, Events, MetadataCache, Notice, parseFrontMatterAliases, Plugin, ReferenceCache, TFile } from 'obsidian';
 
 interface MetadataCacheExtra extends MetadataCache {
 	fileCache: any;
 	metadataCache: any;
 }
 
+interface CachedMetadataExtra extends CachedMetadata {
+	_frontmatter: any;
+}
+
 export default class AliasFromHeadingPlugin extends Plugin {
+	unloadQueue:Set<Function> = new Set();
+
 	async onload () {
 		const { metadataCache, vault, workspace } = this.app;
 		const headingByPath = new Map();
@@ -23,31 +29,43 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			if (!file) {
 				return;
 			}
+
+			const { path } = file;
+			const heading = this.loadHeading(path);
+			const activeFile = workspace.getActiveFile();
+
+			if (path !== activeFile?.path) {
+				return;
+			}
+
 			// Cache the current heading for each active or opened file.
 			// Once a new file opens, clear out the old data after
 			// a debounced 10 seconds. This gives plenty of time for
 			// any links to be updated, if the user updates the heading
 			// and quickly opens another file.
-			const { path } = file;
-			const heading = this.loadHeading(path);
 			headingByPath.set(path, heading);
 			clearHeadings(path);
 		};
 
-		workspace.onLayoutReady(() => loadFile(workspace.getActiveFile()));
+		workspace.onLayoutReady(() => {
+			const files = vault.getMarkdownFiles();
+			files.forEach(loadFile);
+		});
 
-		this.registerEvent(workspace.on('file-open', loadFile));
+		this.registerAndUnloadEvent(workspace, 'file-open', loadFile);
 
-		this.registerEvent(vault.on('rename', (file, oldPath) => {
+		this.registerAndUnloadEvent(metadataCache, 'resolve', loadFile);
+
+		this.registerAndUnloadEvent(vault, 'rename', (file, oldPath) => {
 			if (!(file instanceof TFile)) {
 				return;
 			}
 			const { path } = file;
 			const heading = headingByPath.get(oldPath);
 			headingByPath.set(path, heading);
-		}));
+		});
 
-		this.registerEvent(metadataCache.on('changed', async (file) => {
+		this.registerAndUnloadEvent(metadataCache, 'changed', async (file) => {
 			const { path } = file;
 
 			if (!headingByPath.has(path)) {
@@ -123,39 +141,59 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			}
 
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
-		}));
+		});
+	}
 
-		this.registerEvent(metadataCache.on('resolve', async (file) => {
-			const { path } = file;
-			// Update metadata for all files in the vault on load.
-			// Keep it updated even if files are modified outside of Obsidian.
-			// This is also triggered after files are changed.
-			// There is a small performance penalty in that case,
-			// because the same work was already done during the `change` event.
-			this.loadHeading(path);
-		}));
+	async unload() {
+		this.unloadQueue.forEach((cb:Function) => cb());
+		this.unloadQueue.clear();
+		// Swap any modified frontmatter for the original.
+		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
+		Object.keys(metadataCache.metadataCache).forEach((hash) => {
+			const cache = <CachedMetadataExtra>metadataCache.metadataCache[hash];
+			if (!cache.hasOwnProperty('_frontmatter')) {
+				return;
+			}
+			if (cache._frontmatter === undefined) {
+				delete cache.frontmatter;
+			} else {
+				cache.frontmatter = cache._frontmatter;
+			}
+			delete cache._frontmatter;
+		});
+	}
+
+	registerAndUnloadEvent (emitter:Events, name:string, callback: (...data: any) => any) {
+		const eventRef = emitter.on(name, callback);
+		this.registerEvent(eventRef);
+		// Manually unsubscribe to events, since `this.registerEvent()`
+		// seems to not be doing it on plugin unload.
+		this.unloadQueue.add(() => emitter.off(name, callback));
 	}
 
 	loadHeading (path: string) {
-		const { metadataCache } = this.app;
-		const cache = metadataCache.getCache(path);
-		const { frontmatter = {}, headings } = cache;
+		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
+		const cache = <CachedMetadataExtra>metadataCache.getCache(path);
+		if (!cache) {
+			return;
+		}
+		const { headings } = cache;
 		if (!Array.isArray(headings) || !headings.length) {
 			return;
 		}
+		const _frontmatter = cache.hasOwnProperty('_frontmatter') ? cache._frontmatter : cache.frontmatter;
 		const { heading } = headings[0];
-		const { hash } = (<MetadataCacheExtra>metadataCache).fileCache[path];
-		const { alias } = <any>frontmatter;
-		const _alias = alias ? Array.isArray(alias) ? alias : [alias] : []
-		const uniqueAlias = [...new Set([ heading, ..._alias ])];
-		const updatedCache = {
-			...cache,
-			frontmatter: {
-				...frontmatter,
-				alias: uniqueAlias
-			}
-		};
-		(<MetadataCacheExtra>metadataCache).metadataCache[hash] = updatedCache;
+		const aliases = parseFrontMatterAliases(_frontmatter) || [];
+		const frontmatter = <any>{ ...(_frontmatter || {}) };
+		frontmatter.aliases = [...new Set([ heading, ...aliases ])];
+		// Delete the `alias` key, so it doesn't override any use of `aliases`.
+		delete frontmatter.alias;
+		// Save a duplicate of the original frontmatter as `_frontmatter`.
+		// If `_frontmatter` is not present, the frontmatter has not been
+		// modified by this plugin or it has been overwritten.
+		const updatedCache = { ...cache, _frontmatter, frontmatter };
+		const { hash } = metadataCache.fileCache[path];
+		metadataCache.metadataCache[hash] = updatedCache;
 		return heading;
 	}
 }
