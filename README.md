@@ -1,6 +1,6 @@
 # Alias from heading
 
-[Aliases](https://help.obsidian.md/How+to/Add+aliases+to+note) in [Obsidian](https://obsidian.md) make it convenient to provide display names to document links. However, there are a few pain points:
+Aliases in [Obsidian](https://obsidian.md) make it convenient to provide display names to document links. However, there are a few pain points:
 
 - [Aliases are managed in YAML](https://help.obsidian.md/How+to/Add+aliases+to+note), which may feel clumsy to use.
 - Display names of links do not stay in sync with changes to aliases.
