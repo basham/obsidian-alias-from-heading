@@ -6,11 +6,12 @@ interface MetadataCacheExtra extends MetadataCache {
 }
 
 interface CachedMetadataExtra extends CachedMetadata {
-	_frontmatter: any;
+	[key: symbol]: any;
 }
 
 export default class AliasFromHeadingPlugin extends Plugin {
-	unloadQueue:Set<Function> = new Set();
+	frontmatterKey = Symbol();
+	unloadQueue = new Set();
 
 	async onload () {
 		const { metadataCache, vault, workspace } = this.app;
@@ -145,21 +146,21 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	}
 
 	async unload() {
-		this.unloadQueue.forEach((cb:Function) => cb());
+		this.unloadQueue.forEach((cb:() => void) => cb());
 		this.unloadQueue.clear();
 		// Swap any modified frontmatter for the original.
 		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
 		Object.keys(metadataCache.metadataCache).forEach((hash) => {
 			const cache = <CachedMetadataExtra>metadataCache.metadataCache[hash];
-			if (!cache.hasOwnProperty('_frontmatter')) {
+			if (!Object.getOwnPropertySymbols(cache).includes(this.frontmatterKey)) {
 				return;
 			}
-			if (cache._frontmatter === undefined) {
+			if (cache[this.frontmatterKey] === undefined) {
 				delete cache.frontmatter;
 			} else {
-				cache.frontmatter = cache._frontmatter;
+				cache.frontmatter = cache[this.frontmatterKey];
 			}
-			delete cache._frontmatter;
+			delete cache[this.frontmatterKey];
 		});
 	}
 
@@ -181,17 +182,23 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		if (!Array.isArray(headings) || !headings.length) {
 			return;
 		}
-		const _frontmatter = cache.hasOwnProperty('_frontmatter') ? cache._frontmatter : cache.frontmatter;
+		const _frontmatter = Object.getOwnPropertySymbols(cache).includes(this.frontmatterKey)
+			? cache[this.frontmatterKey]
+			: cache.frontmatter;
 		const { heading } = headings[0];
 		const aliases = parseFrontMatterAliases(_frontmatter) || [];
 		const frontmatter = <any>{ ...(_frontmatter || {}) };
 		frontmatter.aliases = [...new Set([ heading, ...aliases ])];
 		// Delete the `alias` key, so it doesn't override any use of `aliases`.
 		delete frontmatter.alias;
-		// Save a duplicate of the original frontmatter as `_frontmatter`.
-		// If `_frontmatter` is not present, the frontmatter has not been
+		// Save a duplicate of the original frontmatter.
+		// If it is not present, the frontmatter has not been
 		// modified by this plugin or it has been overwritten.
-		const updatedCache = { ...cache, _frontmatter, frontmatter };
+		const updatedCache = {
+			...cache,
+			[this.frontmatterKey]: _frontmatter,
+			frontmatter
+		};
 		const { hash } = metadataCache.fileCache[path];
 		metadataCache.metadataCache[hash] = updatedCache;
 		return heading;
