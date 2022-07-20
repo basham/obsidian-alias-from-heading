@@ -1,4 +1,4 @@
-import { CachedMetadata, debounce, Events, MetadataCache, Notice, parseFrontMatterAliases, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { CachedMetadata, debounce, MetadataCache, Notice, parseFrontMatterAliases, Plugin, ReferenceCache, TFile } from 'obsidian';
 
 interface MetadataCacheExtra extends MetadataCache {
 	fileCache: any;
@@ -11,9 +11,8 @@ interface CachedMetadataExtra extends CachedMetadata {
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	frontmatterKey = Symbol();
-	unloadQueue = new Set();
 
-	async onload () {
+	onload () {
 		const { metadataCache, vault, workspace } = this.app;
 		const headingByPath = new Map();
 
@@ -53,20 +52,20 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			files.forEach(loadFile);
 		});
 
-		this.registerAndUnloadEvent(workspace, 'file-open', loadFile);
+		this.registerEvent(workspace.on('file-open', loadFile));
 
-		this.registerAndUnloadEvent(metadataCache, 'resolve', loadFile);
+		this.registerEvent(metadataCache.on('resolve', loadFile));
 
-		this.registerAndUnloadEvent(vault, 'rename', (file, oldPath) => {
+		this.registerEvent(vault.on('rename', (file, oldPath) => {
 			if (!(file instanceof TFile)) {
 				return;
 			}
 			const { path } = file;
 			const heading = headingByPath.get(oldPath);
 			headingByPath.set(path, heading);
-		});
+		}));
 
-		this.registerAndUnloadEvent(metadataCache, 'changed', async (file) => {
+		this.registerEvent(metadataCache.on('changed', async (file) => {
 			const { path } = file;
 
 			if (!headingByPath.has(path)) {
@@ -129,7 +128,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					);
 					await vault.modify(f, <string>contents);
 					return matches;
-				})
+				});
 
 			const linkMatches = (await Promise.all(modifiedFiles))
 				.filter((m) => m);
@@ -142,12 +141,10 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			}
 
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
-		});
+		}));
 	}
 
-	async unload() {
-		this.unloadQueue.forEach((cb:() => void) => cb());
-		this.unloadQueue.clear();
+	onunload () {
 		// Swap any modified frontmatter for the original.
 		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
 		Object.keys(metadataCache.metadataCache).forEach((hash) => {
@@ -162,14 +159,6 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			}
 			delete cache[this.frontmatterKey];
 		});
-	}
-
-	registerAndUnloadEvent (emitter:Events, name:string, callback: (...data: any) => any) {
-		const eventRef = emitter.on(name, callback);
-		this.registerEvent(eventRef);
-		// Manually unsubscribe to events, since `this.registerEvent()`
-		// seems to not be doing it on plugin unload.
-		this.unloadQueue.add(() => emitter.off(name, callback));
 	}
 
 	loadHeading (path: string) {
@@ -205,7 +194,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	}
 }
 
-function escapeRegExp(source:string):string {
+function escapeRegExp (source:string):string {
 	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
