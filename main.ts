@@ -11,6 +11,7 @@ interface CachedMetadataExtra extends CachedMetadata {
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	frontmatterKey = Symbol();
+	removeMetadataCachePatch: () => void;
 
 	onload () {
 		const { metadataCache, vault, workspace } = this.app;
@@ -50,6 +51,16 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		workspace.onLayoutReady(() => {
 			const files = vault.getMarkdownFiles();
 			files.forEach(loadFile);
+		});
+
+		this.removeMetadataCachePatch = patch(this.app.metadataCache, {
+			getLinkSuggestions (originalMethod: Function) {
+				return function () {
+					const suggestions = originalMethod();
+					console.log('LINK SUGGESTIONS', suggestions);
+					return suggestions;
+				}
+			}
 		});
 
 		this.registerEvent(workspace.on('file-open', loadFile));
@@ -145,6 +156,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	}
 
 	onunload () {
+		this.removeMetadataCachePatch();
 		// Swap any modified frontmatter for the original.
 		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
 		Object.keys(metadataCache.metadataCache).forEach((hash) => {
@@ -196,6 +208,25 @@ export default class AliasFromHeadingPlugin extends Plugin {
 
 function escapeRegExp (source:string):string {
 	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Inspired by:
+// https://github.com/pjeby/monkey-around
+function patch (source: any, methods: any) {
+	const removals = Object.entries(methods).map(([key, createMethod]) => {
+		const hadOwn = source.hasOwnProperty(key);
+		const method = source[key];
+		source[key] = createMethod(method.bind(source));
+
+		return function remove () {
+			if (hadOwn) {
+				source[key] = method;
+			} else {
+				delete source[key];
+			}
+		}
+	})
+	return () => removals.forEach((r) => r())
 }
 
 function pluralize (count:number, singular:string, plural = `${singular}s`):string {
