@@ -1,22 +1,31 @@
-import { CachedMetadata, debounce, MetadataCache, Notice, parseFrontMatterAliases, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
 
-interface MetadataCacheExtra extends MetadataCache {
-	fileCache: any;
-	metadataCache: any;
-}
-
-interface CachedMetadataExtra extends CachedMetadata {
-	[key: symbol]: any;
+interface LinkSuggestion {
+	file: TFile;
+	path: string;
+	alias?: string;
 }
 
 export default class AliasFromHeadingPlugin extends Plugin {
-	frontmatterKey = Symbol();
 	removeMetadataCachePatch: () => void;
 
 	onload () {
 		const { metadataCache, vault, workspace } = this.app;
 		const headingByPath = new Map();
 
+		function getHeading (file:TFile) {
+			const { headings } = metadataCache.getFileCache(file);
+			if (!Array.isArray(headings) || !headings.length) {
+				return;
+			}
+			const { heading } = headings[0];
+			return heading;
+		}
+
+		// Once a file opens, clear out the old data after
+		// a debounced 10 seconds. This gives plenty of time for
+		// any links to be updated, if the user updates the heading
+		// and quickly opens another file.
 		const clearHeadings = debounce((path) => {
 			if (!headingByPath.has(path)) {
 				return;
@@ -26,46 +35,19 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			headingByPath.set(path, heading);
 		}, 10000, true);
 
-		const loadFile = (file:TFile) => {
-			if (!file) {
-				return;
-			}
-
+		function loadFile (file:TFile) {
 			const { path } = file;
-			const heading = this.loadHeading(path);
-			const activeFile = workspace.getActiveFile();
-
-			if (path !== activeFile?.path) {
-				return;
-			}
-
-			// Cache the current heading for each active or opened file.
-			// Once a new file opens, clear out the old data after
-			// a debounced 10 seconds. This gives plenty of time for
-			// any links to be updated, if the user updates the heading
-			// and quickly opens another file.
+			const heading = getHeading(file);
 			headingByPath.set(path, heading);
 			clearHeadings(path);
-		};
+		}
 
 		workspace.onLayoutReady(() => {
-			const files = vault.getMarkdownFiles();
-			files.forEach(loadFile);
-		});
-
-		this.removeMetadataCachePatch = patch(this.app.metadataCache, {
-			getLinkSuggestions (originalMethod: Function) {
-				return function () {
-					const suggestions = originalMethod();
-					console.log('LINK SUGGESTIONS', suggestions);
-					return suggestions;
-				}
-			}
+			const activeFile = workspace.getActiveFile();
+			loadFile(activeFile);
 		});
 
 		this.registerEvent(workspace.on('file-open', loadFile));
-
-		this.registerEvent(metadataCache.on('resolve', loadFile));
 
 		this.registerEvent(vault.on('rename', (file, oldPath) => {
 			if (!(file instanceof TFile)) {
@@ -84,7 +66,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			}
 
 			const prevHeading = headingByPath.get(path);
-			const heading = this.loadHeading(path);
+			const heading = getHeading(file);
 			headingByPath.set(path, heading);
 
 			if (prevHeading === heading) {
@@ -153,56 +135,35 @@ export default class AliasFromHeadingPlugin extends Plugin {
 
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
+
+		// Extend the `getLinkSuggestions` method to include aliases
+		// derived from headings.
+		this.removeMetadataCachePatch = patch(metadataCache, {
+			getLinkSuggestions (originalMethod: () => LinkSuggestion[]) {
+				return function () {
+					const delimiter = '|';
+					const suggestions = originalMethod();
+					const frontmatterAliases = suggestions
+						.filter((suggestion) => suggestion.hasOwnProperty('path') && suggestion.hasOwnProperty('alias'))
+						.map(({ path, alias }) => [path, alias].join(delimiter));
+					const suggestionsFromHeading = vault.getMarkdownFiles()
+						.map((file) => {
+							const alias = getHeading(file);
+							const path = omitExtension(file.path);
+							if (!alias || frontmatterAliases.includes([path, alias].join(delimiter))) {
+								return;
+							}
+							return { file, path, alias };
+						})
+						.filter((v) => v);
+					return [...suggestions, ...suggestionsFromHeading];
+				}
+			}
+		});
 	}
 
 	onunload () {
 		this.removeMetadataCachePatch();
-		// Swap any modified frontmatter for the original.
-		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
-		Object.keys(metadataCache.metadataCache).forEach((hash) => {
-			const cache = <CachedMetadataExtra>metadataCache.metadataCache[hash];
-			if (!Object.getOwnPropertySymbols(cache).includes(this.frontmatterKey)) {
-				return;
-			}
-			if (cache[this.frontmatterKey] === undefined) {
-				delete cache.frontmatter;
-			} else {
-				cache.frontmatter = cache[this.frontmatterKey];
-			}
-			delete cache[this.frontmatterKey];
-		});
-	}
-
-	loadHeading (path: string) {
-		const metadataCache = <MetadataCacheExtra>this.app.metadataCache;
-		const cache = <CachedMetadataExtra>metadataCache.getCache(path);
-		if (!cache) {
-			return;
-		}
-		const { headings } = cache;
-		if (!Array.isArray(headings) || !headings.length) {
-			return;
-		}
-		const _frontmatter = Object.getOwnPropertySymbols(cache).includes(this.frontmatterKey)
-			? cache[this.frontmatterKey]
-			: cache.frontmatter;
-		const { heading } = headings[0];
-		const aliases = parseFrontMatterAliases(_frontmatter) || [];
-		const frontmatter = <any>{ ...(_frontmatter || {}) };
-		frontmatter.aliases = [...new Set([ heading, ...aliases ])];
-		// Delete the `alias` key, so it doesn't override any use of `aliases`.
-		delete frontmatter.alias;
-		// Save a duplicate of the original frontmatter.
-		// If it is not present, the frontmatter has not been
-		// modified by this plugin or it has been overwritten.
-		const updatedCache = {
-			...cache,
-			[this.frontmatterKey]: _frontmatter,
-			frontmatter
-		};
-		const { hash } = metadataCache.fileCache[path];
-		metadataCache.metadataCache[hash] = updatedCache;
-		return heading;
 	}
 }
 
@@ -210,9 +171,14 @@ function escapeRegExp (source:string):string {
 	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function omitExtension (path: string) {
+	const i = path.lastIndexOf('.');
+	return -1 === i || i === path.length - 1 || 0 === i ? path : path.slice(0, i);
+}
+
 // Inspired by:
 // https://github.com/pjeby/monkey-around
-function patch (source: any, methods: any) {
+function patch (source:any, methods:any) {
 	const removals = Object.entries(methods).map(([key, createMethod]) => {
 		const hadOwn = source.hasOwnProperty(key);
 		const method = source[key];
