@@ -2,7 +2,7 @@
 
 Aliases in [Obsidian](https://obsidian.md) make it convenient to provide display names to document links. However, there are a few pain points:
 
-- [Aliases are managed in YAML](https://help.obsidian.md/How+to/Add+aliases+to+note), which may feel clumsy to use.
+- [Aliases are managed in YAML](https://help.obsidian.md/Linking+notes+and+files/Aliases), which may feel clumsy to use.
 - Display names of links do not stay in sync with changes to aliases.
 
 This plugin resolves these problems in the following ways:
