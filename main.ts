@@ -36,10 +36,12 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		}, 10000, true);
 
 		function loadFile (file:TFile) {
-			const { path } = file;
-			const heading = getHeading(file);
-			headingByPath.set(path, heading);
-			clearHeadings(path);
+			if (file) {
+				const { path } = file;
+				const heading = getHeading(file);
+				headingByPath.set(path, heading);
+				clearHeadings(path);
+			}
 		}
 
 		workspace.onLayoutReady(() => {
