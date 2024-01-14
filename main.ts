@@ -36,6 +36,9 @@ export default class AliasFromHeadingPlugin extends Plugin {
 		}, 10000, true);
 
 		function loadFile (file:TFile) {
+			if (!file) {
+				return;
+			}
 			const { path } = file;
 			const heading = getHeading(file);
 			headingByPath.set(path, heading);
