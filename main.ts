@@ -85,7 +85,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
 						.map((rc:ReferenceCache) => rc.link)
-						.filter((link) => link.split('#')[0] === metadataCache.fileToLinktext(file, ''))
+						.filter((link) => metadataCache.getFirstLinkpathDest(link, '').path === path)
 						// Make pairs of links to be found and replaced.
 						// Some of these pairs may be redundant or result in no matches
 						// for any given path, but that's okay.
@@ -129,8 +129,8 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			const linkMatches = (await Promise.all(modifiedFiles))
 				.filter((m) => m);
 			const fileCount = linkMatches.length;
-			const linkCount = linkMatches
-				.reduce((sum, value) => sum + value, 0);
+			const linkCount = <number>linkMatches
+				.reduce((sum:number, value:number) => sum + value, 0);
 
 			if (!fileCount || !linkCount) {
 				return;
@@ -185,6 +185,7 @@ function patch (source:any, methods:any) {
 	const removals = Object.entries(methods).map(([key, createMethod]) => {
 		const hadOwn = source.hasOwnProperty(key);
 		const method = source[key];
+		// @ts-ignore
 		source[key] = createMethod(method.bind(source));
 
 		return function remove () {
@@ -198,6 +199,6 @@ function patch (source:any, methods:any) {
 	return () => removals.forEach((r) => r())
 }
 
-function pluralize (count:number, singular:string, plural = `${singular}s`):string {
+function pluralize (count:number, singular:string, plural:string = `${singular}s`):string {
 	return count === 1 ? singular : plural;
 }
