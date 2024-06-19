@@ -102,27 +102,26 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.filter(([, linksToReplace]:[string, []]) => linksToReplace.length)
 				.map(async ([p, linksToReplace]:[string, []]) => {
 					const f = <TFile>vault.getAbstractFileByPath(p);
-					const prevContents = await vault.read(f);
-					const [contents, matches]:(string | number)[] = linksToReplace.reduce(
-						([source, total]:[string, number], [find, replace]:string[]) => {
-							// The heading must be a regular expression and not a string.
-							// This solves two problems with the use of `String.replace()`.
-							// 1. This allows replacement patterns (`$$, `$&`, etc.)
-							//    to be included in the heading without causing mismatches,
-							//    similar to the aforementioned `]` problem.
-							// 2. This allows the second parameter to be a function,
-							//    so the number of matches can be counted as a side effect.
-							let count = 0;
-							const re = new RegExp(escapeRegExp(find), 'g');
-							const s = source.replace(re, () => {
-								count++;
-								return replace;
-							});
-							return [s, count + total];
-						},
-						[prevContents, 0]
+					let matches = 0;
+					await vault.process(f, (data) =>
+						linksToReplace.reduce(
+							(source, [find, replace]:string[]) => {
+								// The heading must be a regular expression and not a string.
+								// This solves two problems with the use of `String.replace()`.
+								// 1. This allows replacement patterns (`$$, `$&`, etc.)
+								//    to be included in the heading without causing mismatches,
+								//    similar to the aforementioned `]` problem.
+								// 2. This allows the second parameter to be a function,
+								//    so the number of matches can be counted as a side effect.
+								const re = new RegExp(escapeRegExp(find), 'g');
+								return source.replace(re, () => {
+									matches++;
+									return replace;
+								});
+							},
+							data
+						)
 					);
-					await vault.modify(f, <string>contents);
 					return matches;
 				});
 
