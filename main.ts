@@ -1,11 +1,5 @@
 import { CachedMetadata, debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
 
-interface LinkSuggestion {
-	file: TFile;
-	path: string;
-	alias?: string;
-}
-
 export default class AliasFromHeadingPlugin extends Plugin {
 	removeMetadataCachePatch: () => void;
 
