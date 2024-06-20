@@ -84,19 +84,36 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.map((p:string) => {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
-						.map((rc:ReferenceCache) => rc.link)
-						.filter((link) => metadataCache.getFirstLinkpathDest(link, '')?.path === path)
+						.filter((rc:ReferenceCache) => metadataCache.getFirstLinkpathDest(rc.link, '')?.path === path)
 						// Make pairs of links to be found and replaced.
 						// Some of these pairs may be redundant or result in no matches
 						// for any given path, but that's okay.
 						// The `rc.original` and `rc.displayText` values are not used,
-						// because it could be inaccurate if the heading ends with a `]`.
+						// because it could be inaccurate if the heading includes brackets `[]`.
 						// The Obsidian algorithm for detecting links is correct,
 						// but this extra work is needed to match to the user intent.
-						.map((link) =>
-							[prevHeading, heading]
-								.map((h) => `[[${link}|${h === undefined ? link : h}]]`)
-						)
+						.map((rc:ReferenceCache) => {
+							const { original } = rc;
+
+							const mdLinkRE = /^\[(.*)\]\((?<link>.*)\)$/;
+							const mdLink = original.match(mdLinkRE)?.groups?.link;
+							if (mdLink) {
+								return [
+									`[${escapeMDLinkName(prevHeading)}](${mdLink})`,
+									`[${escapeMDLinkName(heading)}](${mdLink})`
+								];
+							}
+
+							const wikiLinkRE = /^\[\[(?<link>.*?)\|.*\]\]$/;
+							const wikiLink = original.match(wikiLinkRE)?.groups?.link;
+							if (wikiLink) {
+								return [
+									`[[${wikiLink}|${escapeWikiLinkName(prevHeading)}]]`,
+									`[[${wikiLink}|${escapeWikiLinkName(heading)}]]`,
+								];
+							}
+						})
+						.filter((i) => i);
 					return [p, linksToReplace];
 				})
 				.filter(([, linksToReplace]:[string, []]) => linksToReplace.length)
@@ -167,6 +184,19 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	onunload () {
 		this.removeMetadataCachePatch();
 	}
+}
+
+// Escape all brackets (`[]`).
+function escapeMDLinkName (source:string):string {
+	return source.replace(/[\[\]]/g, '\\$&');
+}
+
+// Escape all sets of brackets (`[[` or `]]`).
+function escapeWikiLinkName (source:string):string {
+	return source.replace(
+		/(\[{2,}|\]{2,})/g,
+		(match) => match.split('').map((m) => `\\${m}`).join('')
+	)
 }
 
 function escapeRegExp (source:string):string {
