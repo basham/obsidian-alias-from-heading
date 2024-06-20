@@ -109,6 +109,6 @@ If a custom display name is wanted or none at all, just manually change it inlin
 - ...
 ```
 
-## Developer instructions
+## Development
 
-Read the [Obsidian Sample Plugin](https://github.com/obsidianmd/obsidian-sample-plugin) readme and [Obsidian Plugin Developer Docs](https://docs.obsidian.md) to learn about how to develop, install, test, and publish this plugin.
+See: [Obsidian Developer Docs](https://docs.obsidian.md)
