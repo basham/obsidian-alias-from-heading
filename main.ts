@@ -1,10 +1,4 @@
-import { debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
-
-interface LinkSuggestion {
-	file: TFile;
-	path: string;
-	alias?: string;
-}
+import { CachedMetadata, debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
 
 export default class AliasFromHeadingPlugin extends Plugin {
 	removeMetadataCachePatch: () => void;
@@ -84,45 +78,64 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.map((p:string) => {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
-						.map((rc:ReferenceCache) => rc.link)
-						.filter((link) => metadataCache.getFirstLinkpathDest(link, '').path === path)
+						.filter((rc:ReferenceCache) => {
+							const [link] = rc.link.split('#');
+							return metadataCache.getFirstLinkpathDest(link, '')?.path === path;
+						})
 						// Make pairs of links to be found and replaced.
 						// Some of these pairs may be redundant or result in no matches
 						// for any given path, but that's okay.
 						// The `rc.original` and `rc.displayText` values are not used,
-						// because it could be inaccurate if the heading ends with a `]`.
+						// because it could be inaccurate if the heading includes brackets `[]`.
 						// The Obsidian algorithm for detecting links is correct,
 						// but this extra work is needed to match to the user intent.
-						.map((link) =>
-							[prevHeading, heading]
-								.map((h) => `[[${link}|${h === undefined ? link : h}]]`)
-						)
+						.map((rc:ReferenceCache) => {
+							const { original } = rc;
+
+							const mdLinkRE = /^\[(.*)\]\((?<link>.*)\)$/;
+							const mdLink = original.match(mdLinkRE)?.groups?.link;
+							if (mdLink) {
+								return [
+									`[${escapeMDLinkName(prevHeading)}](${mdLink})`,
+									`[${escapeMDLinkName(heading)}](${mdLink})`
+								];
+							}
+
+							const wikiLinkRE = /^\[\[(?<link>.*?)\|.*\]\]$/;
+							const wikiLink = original.match(wikiLinkRE)?.groups?.link;
+							if (wikiLink) {
+								return [
+									`[[${wikiLink}|${escapeWikiLinkName(prevHeading)}]]`,
+									`[[${wikiLink}|${escapeWikiLinkName(heading)}]]`,
+								];
+							}
+						})
+						.filter((i) => i);
 					return [p, linksToReplace];
 				})
 				.filter(([, linksToReplace]:[string, []]) => linksToReplace.length)
 				.map(async ([p, linksToReplace]:[string, []]) => {
 					const f = <TFile>vault.getAbstractFileByPath(p);
-					const prevContents = await vault.read(f);
-					const [contents, matches]:(string | number)[] = linksToReplace.reduce(
-						([source, total]:[string, number], [find, replace]:string[]) => {
-							// The heading must be a regular expression and not a string.
-							// This solves two problems with the use of `String.replace()`.
-							// 1. This allows replacement patterns (`$$, `$&`, etc.)
-							//    to be included in the heading without causing mismatches,
-							//    similar to the aforementioned `]` problem.
-							// 2. This allows the second parameter to be a function,
-							//    so the number of matches can be counted as a side effect.
-							let count = 0;
-							const re = new RegExp(escapeRegExp(find), 'g');
-							const s = source.replace(re, () => {
-								count++;
-								return replace;
-							});
-							return [s, count + total];
-						},
-						[prevContents, 0]
+					let matches = 0;
+					await vault.process(f, (data) =>
+						linksToReplace.reduce(
+							(source, [find, replace]:string[]) => {
+								// The heading must be a regular expression and not a string.
+								// This solves two problems with the use of `String.replace()`.
+								// 1. This allows replacement patterns (`$$, `$&`, etc.)
+								//    to be included in the heading without causing mismatches,
+								//    similar to the aforementioned `]` problem.
+								// 2. This allows the second parameter to be a function,
+								//    so the number of matches can be counted as a side effect.
+								const re = new RegExp(escapeRegExp(find), 'g');
+								return source.replace(re, () => {
+									matches++;
+									return replace;
+								});
+							},
+							data
+						)
 					);
-					await vault.modify(f, <string>contents);
 					return matches;
 				});
 
@@ -139,27 +152,36 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
 
-		// Extend the `getLinkSuggestions` method to include aliases
+		// Extend the `getCache` method to include aliases
 		// derived from headings.
 		this.removeMetadataCachePatch = patch(metadataCache, {
-			getLinkSuggestions (originalMethod: () => LinkSuggestion[]) {
-				return function () {
-					const delimiter = '|';
-					const suggestions = originalMethod();
-					const frontmatterAliases = suggestions
-						.filter((suggestion) => suggestion.hasOwnProperty('path') && suggestion.hasOwnProperty('alias'))
-						.map(({ path, alias }) => [path, alias].join(delimiter));
-					const suggestionsFromHeading = vault.getMarkdownFiles()
-						.map((file) => {
-							const alias = getHeading(file);
-							const path = omitExtension(file.path);
-							if (!alias || frontmatterAliases.includes([path, alias].join(delimiter))) {
-								return;
-							}
-							return { file, path, alias };
-						})
-						.filter((v) => v);
-					return [...suggestions, ...suggestionsFromHeading];
+			getCache (originalMethod: (path:string) => CachedMetadata|null) {
+				return function (path:string) {
+					const cache = originalMethod(path);
+					const { headings = [] } = cache;
+
+					if (!Array.isArray(headings) || !headings.length) {
+						return cache;
+					}
+
+					const { frontmatter = {} } = cache;
+					const { aliases: _aliases = [] } = frontmatter;
+					const aliasesArray = Array.isArray(_aliases) ? _aliases : [_aliases];
+					const { heading } = headings[0];
+
+					if (aliasesArray.includes(heading)) {
+						return cache;
+					}
+
+					const aliases = aliasesArray.length ? [heading, ...aliasesArray] : heading;
+
+					return {
+						...cache,
+						frontmatter: {
+							...frontmatter,
+							aliases
+						}
+					};
 				}
 			}
 		});
@@ -170,13 +192,21 @@ export default class AliasFromHeadingPlugin extends Plugin {
 	}
 }
 
-function escapeRegExp (source:string):string {
-	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Escape all brackets (`[]`).
+function escapeMDLinkName (source:string):string {
+	return source.replace(/[\[\]]/g, '\\$&');
 }
 
-function omitExtension (path: string) {
-	const i = path.lastIndexOf('.');
-	return -1 === i || i === path.length - 1 || 0 === i ? path : path.slice(0, i);
+// Escape all sets of brackets (`[[` or `]]`).
+function escapeWikiLinkName (source:string):string {
+	return source.replace(
+		/(\[{2,}|\]{2,})/g,
+		(match) => match.split('').map((m) => `\\${m}`).join('')
+	)
+}
+
+function escapeRegExp (source:string):string {
+	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Inspired by:
