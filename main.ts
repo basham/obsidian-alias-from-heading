@@ -166,20 +166,18 @@ export default class AliasFromHeadingPlugin extends Plugin {
 
 					const { frontmatter = {} } = cache;
 					const { aliases: _aliases = [] } = frontmatter;
-					const aliasesArray = Array.isArray(_aliases) ? _aliases : [_aliases];
+					const aliases = Array.isArray(_aliases) ? _aliases : [_aliases];
 					const { heading } = headings[0];
 
-					if (aliasesArray.includes(heading)) {
+					if (aliases.includes(heading)) {
 						return cache;
 					}
-
-					const aliases = aliasesArray.length ? [heading, ...aliasesArray] : heading;
 
 					return {
 						...cache,
 						frontmatter: {
 							...frontmatter,
-							aliases
+							aliases: [heading, ...aliases]
 						}
 					};
 				}
