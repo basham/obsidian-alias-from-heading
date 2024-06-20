@@ -84,7 +84,10 @@ export default class AliasFromHeadingPlugin extends Plugin {
 				.map((p:string) => {
 					const { links = [] } = metadataCache.getCache(p);
 					const linksToReplace = links
-						.filter((rc:ReferenceCache) => metadataCache.getFirstLinkpathDest(rc.link, '')?.path === path)
+						.filter((rc:ReferenceCache) => {
+							const [link] = rc.link.split('#');
+							return metadataCache.getFirstLinkpathDest(link, '')?.path === path;
+						})
 						// Make pairs of links to be found and replaced.
 						// Some of these pairs may be redundant or result in no matches
 						// for any given path, but that's okay.
