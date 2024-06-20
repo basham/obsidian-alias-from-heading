@@ -1,4 +1,4 @@
-import { debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
+import { CachedMetadata, debounce, Notice, Plugin, ReferenceCache, TFile } from 'obsidian';
 
 interface LinkSuggestion {
 	file: TFile;
@@ -155,27 +155,36 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			new Notice(`Updated ${linkCount} ${pluralize(linkCount, 'link')} in ${fileCount} ${pluralize(fileCount, 'file')}.`);
 		}));
 
-		// Extend the `getLinkSuggestions` method to include aliases
+		// Extend the `getCache` method to include aliases
 		// derived from headings.
 		this.removeMetadataCachePatch = patch(metadataCache, {
-			getLinkSuggestions (originalMethod: () => LinkSuggestion[]) {
-				return function () {
-					const delimiter = '|';
-					const suggestions = originalMethod();
-					const frontmatterAliases = suggestions
-						.filter((suggestion) => suggestion.hasOwnProperty('path') && suggestion.hasOwnProperty('alias'))
-						.map(({ path, alias }) => [path, alias].join(delimiter));
-					const suggestionsFromHeading = vault.getMarkdownFiles()
-						.map((file) => {
-							const alias = getHeading(file);
-							const path = omitExtension(file.path);
-							if (!alias || frontmatterAliases.includes([path, alias].join(delimiter))) {
-								return;
-							}
-							return { file, path, alias };
-						})
-						.filter((v) => v);
-					return [...suggestions, ...suggestionsFromHeading];
+			getCache (originalMethod: (path:string) => CachedMetadata|null) {
+				return function (path:string) {
+					const cache = originalMethod(path);
+					const { headings = [] } = cache;
+
+					if (!Array.isArray(headings) || !headings.length) {
+						return cache;
+					}
+
+					const { frontmatter = {} } = cache;
+					const { aliases: _aliases = [] } = frontmatter;
+					const aliasesArray = Array.isArray(_aliases) ? _aliases : [_aliases];
+					const { heading } = headings[0];
+
+					if (aliasesArray.includes(heading)) {
+						return cache;
+					}
+
+					const aliases = aliasesArray.length ? [heading, ...aliasesArray] : heading;
+
+					return {
+						...cache,
+						frontmatter: {
+							...frontmatter,
+							aliases
+						}
+					};
 				}
 			}
 		});
@@ -201,11 +210,6 @@ function escapeWikiLinkName (source:string):string {
 
 function escapeRegExp (source:string):string {
 	return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function omitExtension (path: string) {
-	const i = path.lastIndexOf('.');
-	return -1 === i || i === path.length - 1 || 0 === i ? path : path.slice(0, i);
 }
 
 // Inspired by:
