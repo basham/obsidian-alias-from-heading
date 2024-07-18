@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-alias-from-heading",
-	"version": "1.1.1",
+	"version": "1.1.2",
 	"description": "Obsidian plugin: Implicitly add an alias matching the first heading in a document.",
 	"main": "main.js",
 	"scripts": {
