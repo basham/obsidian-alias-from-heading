@@ -158,13 +158,14 @@ export default class AliasFromHeadingPlugin extends Plugin {
 			getCache (originalMethod: (path:string) => CachedMetadata|null) {
 				return function (path:string) {
 					const cache = originalMethod(path);
-					const { headings = [] } = cache;
+					const _cache = cache || {};
+					const { headings = [] } = _cache;
 
 					if (!Array.isArray(headings) || !headings.length) {
 						return cache;
 					}
 
-					const { frontmatter = {} } = cache;
+					const { frontmatter = {} } = _cache;
 					const { aliases: _aliases = [] } = frontmatter;
 					const aliases = Array.isArray(_aliases) ? _aliases : [_aliases];
 					const { heading } = headings[0];
@@ -174,7 +175,7 @@ export default class AliasFromHeadingPlugin extends Plugin {
 					}
 
 					return {
-						...cache,
+						..._cache,
 						frontmatter: {
 							...frontmatter,
 							aliases: [heading, ...aliases]
